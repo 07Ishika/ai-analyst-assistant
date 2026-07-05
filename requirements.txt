@@ -1,0 +1,8 @@
+
+streamlit #— our app framework
+pandas #— data handling
+plotly # — interactive charts
+anthropic # — Claude AI API
+python-dotenv # — to read API key from .env file safely
+openpyxl # — to handle Excel files
+
