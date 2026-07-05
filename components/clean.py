@@ -69,23 +69,48 @@ def show_clean(df):
     st.header("Step 3 — Clean & Transform")
     st.write("AI will suggest cleaning actions — you approve or skip each one")
 
-    # PII Detection — before anything else
+# PII Detection — before anything else
     sensitive_cols = detect_sensitive_columns(df)
-    if sensitive_cols:
+    
+    # Value level PII detection
+    from utils.data_helper import detect_pii_in_values
+    value_pii = detect_pii_in_values(df)
+    
+    # Combine both detections
+    all_sensitive = list(set(sensitive_cols + list(value_pii.keys())))
+
+    if all_sensitive:
         st.markdown(f"""
         <div style='background-color: #fde8e8; padding: 15px; 
         border-radius: 10px; border-left: 5px solid #F44336; margin: 10px 0'>
-        <h4>🔒 Privacy Warning — Sensitive Columns Detected</h4>
-        <p>The following columns contain potentially sensitive personal data:</p>
-        <p><b>{', '.join(sensitive_cols)}</b></p>
-        <p>These columns will be <b>excluded from AI analysis</b> to protect privacy.</p>
-        <p>As a responsible analyst — do not modify, share or expose these columns without proper authorization.</p>
+        <h4>🔒 Privacy Warning — Sensitive Data Detected</h4>
+        <p><b>Columns flagged by name:</b> {', '.join(sensitive_cols) if sensitive_cols else 'None'}</p>
+        <p><b>Columns flagged by value scan:</b> {', '.join(value_pii.keys()) if value_pii else 'None'}</p>
+        """, unsafe_allow_html=True)
+
+        # Show what PII types were found in values
+        if value_pii:
+            for col, pii_types in value_pii.items():
+                st.markdown(f"""
+                <div style='background-color: #fff5f5; padding: 8px 15px; 
+                border-radius: 6px; margin: 5px 0'>
+                ⚠️ Column <b>{col}</b> contains — {', '.join(pii_types)}
+                </div>
+                """, unsafe_allow_html=True)
+
+        st.markdown("""
+        <p>These columns are <b>excluded from AI analysis</b> to protect privacy.</p>
+        <p>Do not modify or share these columns without proper authorization.</p>
         </div>
         """, unsafe_allow_html=True)
+
         safe_df, _ = get_safe_df(df)
+        # Also remove value-level PII from safe_df
+        safe_df = safe_df.drop(columns=[c for c in value_pii.keys() if c in safe_df.columns], errors='ignore')
         st.info(f"✅ AI will only analyze {safe_df.shape[1]} safe columns out of {df.shape[1]} total columns.")
     else:
         safe_df = df.copy()
+        st.success("✅ No sensitive data detected in this dataset!")
 
     # Initialize session state
     if "cleaned_df" not in st.session_state:

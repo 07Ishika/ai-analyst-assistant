@@ -40,6 +40,29 @@ def detect_sensitive_columns(df):
                 break
     return sensitive_cols
 
+def detect_pii_in_values(df):
+    import re
+    
+    patterns = {
+        'phone_number': r'\b[6-9]\d{9}\b',
+        'email': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        'aadhar': r'\b\d{4}\s?\d{4}\s?\d{4}\b',
+        'pan': r'\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b',
+        'credit_card': r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+    }
+
+    pii_found = {}
+    for col in df.select_dtypes(include=['object']).columns:
+        sample = df[col].dropna().head(100).astype(str)
+        for pii_type, pattern in patterns.items():
+            matches = sample.str.contains(pattern, regex=True).sum()
+            if matches > 0:
+                if col not in pii_found:
+                    pii_found[col] = []
+                pii_found[col].append(pii_type)
+
+    return pii_found
+
 def get_safe_df(df):
     sensitive_cols = detect_sensitive_columns(df)
     safe_df = df.drop(columns=sensitive_cols, errors='ignore')

@@ -31,10 +31,9 @@ with st.sidebar:
         1: "📁 Upload Data",
         2: "🔍 Understand",
         3: "🧹 Clean & Transform",
-        4: "❓ Define Problem",
-        5: "💡 Insights",
-        6: "📖 Storytelling",
-        7: "📤 Export"
+        4: "❓ Define Problem & Insights",
+        5: "📖 Storytelling",
+        6: "📤 Export"
     }
     for step_num, step_name in steps.items():
         if step_num == st.session_state.current_step:
