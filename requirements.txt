@@ -5,4 +5,5 @@ plotly # — interactive charts
 anthropic # — Claude AI API
 python-dotenv # — to read API key from .env file safely
 openpyxl # — to handle Excel files
-
+groq==0.9.0
+xlrd
