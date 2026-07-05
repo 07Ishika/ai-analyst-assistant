@@ -55,7 +55,10 @@ AI is instructed to think step by step before giving suggestions. This significa
 
 ---
 ## Architecture Diagram
-![Architecture Diagram](images/image.png)
+
+<p style="align:center">
+  <img src="images/image.png" alt="Architecture Diagram" width="900">
+</p>
 
 ## Tech Stack
 
@@ -68,29 +71,7 @@ AI is instructed to think step by step before giving suggestions. This significa
 | AI Model | Llama 3.3 70B via Groq | Fast inference, generous free tier, strong reasoning |
 | Language | Python 3.11 | Wide ecosystem, analyst friendly |
 
----
 
-## Project Structure
-ai-analyst-assistant/
-│
-├── images/
-│   └── image.png
-├── app.py                    # Main controller — routing between steps
-│
-├── components/
-│   ├── understand.py         # Step 2 — AI data understanding
-│   ├── clean.py              # Step 3 — Human in loop cleaning
-│   ├── insights.py           # Step 4 — Business focused insights
-│   ├── storytelling.py       # Step 5 — Non technical narrative
-│   └── export.py             # Step 6 — Power BI export and PDF report
-│
-├── utils/
-│   ├── groq_helper.py        # AI API wrapper with temperature control
-│   └── data_helper.py        # Data loading, PII detection, safe dataframe
-│
-├── .python-version           # Python 3.11 for deployment
-└── requirements.txt
----
 
 ## Running Locally
 
