@@ -61,6 +61,38 @@ if st.session_state.current_step == 1:
 
     if uploaded_file is not None:
         df = load_data(uploaded_file)
+        
+        # Detect dataset type immediately at upload
+        if "dataset_info" not in st.session_state:
+            with st.spinner("Analyzing dataset type..."):
+                from utils.dataset_detector import detect_dataset_type
+                dataset_info = detect_dataset_type(df)
+                st.session_state.dataset_info = dataset_info
+
+        # Show detected type
+        if "dataset_info" in st.session_state:
+            dataset_info = st.session_state.dataset_info
+            type_labels = {
+                "timeseries": "📈 Time Series",
+                "crm": "👥 Customer/CRM",
+                "hr": "👔 HR/People",
+                "transactional": "🛒 Transactional",
+                "marketing": "📣 Marketing",
+                "performance": "🎯 Performance",
+                "healthcare": "🏥 Healthcare",
+                "general": "📊 General"
+            }
+            detected = type_labels.get(dataset_info.get("dataset_type", "general"), "📊 General")
+            confidence = dataset_info.get("confidence", "medium")
+            st.markdown(f"""
+            <div style='background:#1E3A5F; padding:12px 20px; 
+            border-radius:10px; margin:10px 0; display:inline-block'>
+            <span style='color:white; font-weight:bold'>{detected} Dataset Detected</span>
+            <span style='color:#90CAF9; margin-left:10px; font-size:12px'>
+            Confidence: {confidence}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.info(f"💡 {dataset_info.get('key_business_question', '')}")
 
         # Validation checks
         issues = []
