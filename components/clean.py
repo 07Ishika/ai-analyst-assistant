@@ -242,8 +242,8 @@ def show_clean(df):
     st.dataframe(st.session_state.cleaned_df.head(10))
 
     st.divider()
-    if st.button("Proceed to Define Problem →"):
-        st.session_state.current_step = 4
-        st.rerun()
-        
+    if st.button("🤖 Get AI Cleaning Suggestions"):
+     with st.spinner("AI is analyzing your data..."):
+        raw_response = get_ai_suggestions(safe_df)
+        st.write("Raw AI response:", raw_response)  # temporary debug
         

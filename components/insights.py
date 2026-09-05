@@ -21,7 +21,7 @@ Return this exact structure:
 [
   {{
     "column": "exact column name",
-    "chart_type": "bar or histogram or pie",
+    "chart_type": "bar or histogram or pie or line",
     "title": "meaningful chart title",
     "what_it_shows": "one sentence what this chart shows",
     "what_to_look_for": "one sentence what analyst should look for",
@@ -39,6 +39,7 @@ Total rows: {df.shape[0]}
 Rules:
 - If unique count of a column is more than 50% of total rows — it is likely an ID or code — SKIP IT
 - Zip codes, postal codes, ID columns — always SKIP
+- Date columns — SKIP for bar/pie/histogram, only use for line charts
 - Only suggest maximum 3 most valuable charts
 - Return ONLY the JSON array, no other text
     """
@@ -52,106 +53,24 @@ Rules:
     )
     return response
 
-def get_relevant_columns(df, problem):
-    prompt = f"""
-You are a data analyst. Given this business problem and dataset columns, 
-identify which columns are most relevant to answer the problem.
-
-Business Problem: {problem}
-
-Available Columns: {df.columns.tolist()}
-Data Types: {df.dtypes.astype(str).to_dict()}
-Sample Data: {df.head(3).to_string()}
-
-Return ONLY a JSON object:
-{{
-  "primary_column": "the single most important column to answer this problem",
-  "secondary_columns": ["other relevant column 1", "other relevant column 2"],
-  "numeric_columns": ["numeric columns relevant to this problem"]
-}}
-
-Rules:
-- Primary column must directly relate to the business problem
-- Maximum 2 secondary columns
-- Maximum 2 numeric columns
-- Return ONLY the JSON object
-    """
-    response = ask_groq(
-        prompt,
-        system_message="You are a data analyst. You only output valid JSON objects.",
-        temperature=0.0
-    )
-    return response
-
 def get_ai_insights(df, problem, business_context):
+    from utils.dataset_detector import detect_dataset_type
+    from utils.stats_calculator import calculate_stats
 
-    # Step 1 — Find relevant columns for this specific problem
-    try:
-        raw_cols = get_relevant_columns(df, problem)
-        clean = raw_cols.strip()
-        if "```json" in clean:
-            clean = clean.split("```json")[1].split("```")[0]
-        elif "```" in clean:
-            clean = clean.split("```")[1].split("```")[0]
-        start = clean.find("{")
-        end = clean.rfind("}") + 1
-        clean = clean[start:end]
-        relevant = json.loads(clean)
-        primary_col = relevant.get("primary_column", "")
-        secondary_cols = relevant.get("secondary_columns", [])
-        numeric_cols = relevant.get("numeric_columns", [])
-    except:
-        # Fallback to auto detection
-        primary_col = df.select_dtypes(include=['object']).columns[0] if len(df.select_dtypes(include=['object']).columns) > 0 else ""
-        secondary_cols = []
-        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()[:2]
+    # Step 1 — Detect dataset type
+    dataset_info = detect_dataset_type(df)
+    dataset_type = dataset_info.get("dataset_type", "general")
 
-    # Step 2 — Calculate focused stats for relevant columns
-    focused_stats = {}
-
-    # Primary column stats
-    if primary_col and primary_col in df.columns:
-        counts = df[primary_col].value_counts()
-        percentages = (df[primary_col].value_counts(normalize=True) * 100).round(1)
-        focused_stats[f"{primary_col}_distribution"] = {
-            str(k): f"{v} donors ({percentages[k]}%)"
-            for k, v in counts.items()
-        }
-
-        # Cross stats — primary column vs numeric columns
-        for num_col in numeric_cols:
-            if num_col in df.columns:
-                cross = df.groupby(primary_col)[num_col].mean().round(2).sort_values()
-                cross_dict = cross.to_dict()
-                # Add clear highest and lowest labels
-                cross_dict['__lowest__'] = f"{cross.index[0]} ({cross.iloc[0]})"
-                cross_dict['__highest__'] = f"{cross.index[-1]} ({cross.iloc[-1]})"
-                focused_stats[f"avg_{num_col}_by_{primary_col}"] = cross_dict
-                
-    # Secondary columns stats
-    for col in secondary_cols:
-        if col in df.columns and df[col].nunique() < 50:
-            counts = df[col].value_counts()
-            percentages = (df[col].value_counts(normalize=True) * 100).round(1)
-            focused_stats[f"{col}_distribution"] = {
-                str(k): f"{v} ({percentages[k]}%)"
-                for k, v in counts.items()
-            }
-
-    # Overall numeric stats
-    overall_numeric = {}
-    for col in numeric_cols:
-        if col in df.columns:
-            overall_numeric[col] = {
-                "mean": round(df[col].mean(), 2),
-                "min": round(df[col].min(), 2),
-                "max": round(df[col].max(), 2),
-                "median": round(df[col].median(), 2)
-            }
+    # Step 2 — Calculate type specific stats
+    focused_stats = calculate_stats(df, dataset_info)
 
     prompt = f"""
-You are a senior data analyst AND business strategist.
-Your ONLY job is to answer this specific business problem using real data.
+You are a senior data analyst AND a business strategist.
+Think step by step before giving insights.
+
+DATASET TYPE DETECTED: {dataset_type}
+REASONING: {dataset_info.get('reasoning', '')}
+KEY BUSINESS QUESTION THIS DATA ANSWERS: {dataset_info.get('key_business_question', '')}
 
 BUSINESS PROBLEM: {problem}
 
@@ -162,52 +81,49 @@ Business Context:
 - Decisions to be made: {business_context.get('decisions', 'not specified')}
 - Additional context: {business_context.get('additional_context', 'none')}
 
-MOST RELEVANT COLUMN FOR THIS PROBLEM: {primary_col}
-SUPPORTING COLUMNS: {secondary_cols}
-
-FOCUSED STATISTICS — use ONLY these numbers:
+ACTUAL CALCULATED STATISTICS — use ONLY these numbers:
 {focused_stats}
 
-OVERALL NUMERIC STATS:
-{overall_numeric}
-
 Total rows: {df.shape[0]}
+Columns: {df.columns.tolist()}
 
 Return ONLY this JSON object:
 {{
+  "dataset_type_identified": "{dataset_type}",
   "key_insights": [
-    "insight directly answering the business problem with real numbers",
-    "insight 2 with real numbers from focused stats",
-    "insight 3 with real numbers"
+    "specific insight with ACTUAL numbers from statistics",
+    "specific insight 2",
+    "specific insight 3"
   ],
   "patterns": [
-    "pattern directly related to business problem with real numbers",
-    "pattern 2"
+    "specific pattern with real numbers",
+    "specific pattern 2"
   ],
   "anomalies": [
-    "anomaly related to business problem in plain business language",
+    "anomaly in plain business language",
     "anomaly 2"
   ],
   "recommendations": [
-    "recommendation directly addressing business problem with evidence",
-    "recommendation 2",
-    "recommendation 3"
+    "specific recommendation with evidence",
+    "specific recommendation 2",
+    "specific recommendation 3"
   ]
 }}
 
 Rules:
-- EVERY insight must directly relate to the business problem
-- ONLY use numbers from focused statistics above
-- Never make up numbers
+- ONLY use numbers from statistics provided
+- Never invent numbers
+- Every insight must relate to business problem
 - Plain business language — no jargon
 - Return ONLY the JSON object
     """
+
     response = ask_groq(
         prompt,
         system_message="""You are a senior data analyst.
-        You ONLY answer the specific business problem asked.
+        You understand different types of business datasets.
         You ONLY use real numbers from provided statistics.
-        You NEVER hallucinate or make up numbers.
+        You NEVER hallucinate numbers.
         You only output valid JSON objects.""",
         temperature=0.1
     )
@@ -258,6 +174,13 @@ def show_chart(df, suggestion):
             fig = px.pie(values=top_values.values, names=top_values.index,
                 title=suggestion['title'])
             st.plotly_chart(fig, use_container_width=True)
+        elif chart_type == "line":
+            # For time series line charts
+            numeric_cols = df.select_dtypes(include=['float64','int64']).columns.tolist()
+            if len(numeric_cols) > 0:
+                fig = px.line(df, x=col, y=numeric_cols[0],
+                    title=suggestion['title'])
+                st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Could not render chart for {col}: {e}")
 
@@ -376,6 +299,29 @@ def show_insights(df):
     if "ai_insights" in st.session_state:
         insights = st.session_state.ai_insights
 
+        # Dataset type badge
+        dataset_type = insights.get("dataset_type_identified", "general")
+        type_labels = {
+            "timeseries": "📈 Time Series",
+            "crm": "👥 Customer/CRM",
+            "hr": "👔 HR/People",
+            "transactional": "🛒 Transactional",
+            "marketing": "📣 Marketing",
+            "performance": "🎯 Performance",
+            "healthcare": "🏥 Healthcare",
+            "general": "📊 General"
+        }
+        label = type_labels.get(dataset_type, "📊 General")
+        st.markdown(f"""
+        <div style='background:#1E3A5F; display:inline-block; 
+        padding:6px 15px; border-radius:20px; margin:10px 0'>
+        <span style='color:white; font-size:13px; font-weight:bold'>
+        {label} Dataset Detected</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         # Key Insights — Blue
         if "key_insights" in insights:
             st.markdown("""
@@ -450,3 +396,5 @@ def show_insights(df):
         if st.button("Proceed to Storytelling →"):
             st.session_state.current_step = 5
             st.rerun()
+            
+            
