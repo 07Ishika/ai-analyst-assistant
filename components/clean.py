@@ -137,7 +137,7 @@ def show_clean(df):
     # Section 2 — AI Suggestions with Approve/Skip
     st.subheader("2️⃣ AI Suggestions — Approve or Skip Each")
 
-    if st.button("🤖 Get AI Cleaning Suggestions"):
+    if st.button("🤖 Get AI Cleaning Suggestions", key="get_cleaning_suggestions"):
         with st.spinner("AI is analyzing your data..."):
             # Pass safe_df to AI — no sensitive columns
             raw_response = get_ai_suggestions(safe_df)
@@ -240,9 +240,5 @@ def show_clean(df):
 
     st.write("**Preview of Cleaned Data**")
     st.dataframe(st.session_state.cleaned_df.head(10))
-
     st.divider()
-    if st.button("🤖 Get AI Cleaning Suggestions"):
-     with st.spinner("AI is analyzing your data..."):
-        raw_response = get_ai_suggestions(safe_df)
-        
+    
