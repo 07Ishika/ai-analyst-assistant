@@ -215,7 +215,7 @@ def show_clean(df):
 
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    if st.button("✅ Approve", key=f"approve_{i}"):
+                    if st.button("✅ Approve", key=f"clean_approve_{i}"):
                         st.session_state.cleaned_df = apply_action(
                             st.session_state.cleaned_df,
                             suggestion['action'],
@@ -224,7 +224,7 @@ def show_clean(df):
                         st.session_state.applied_actions.append(action_key)
                         st.rerun()
                 with col2:
-                    if st.button("⏭️ Skip", key=f"skip_{i}"):
+                    if st.button("⏭️ Skip", key=f"clean_skip_{i}"):
                         st.session_state.applied_actions.append(action_key)
                         st.rerun()
 
@@ -245,5 +245,4 @@ def show_clean(df):
     if st.button("🤖 Get AI Cleaning Suggestions"):
      with st.spinner("AI is analyzing your data..."):
         raw_response = get_ai_suggestions(safe_df)
-        st.write("Raw AI response:", raw_response)  # temporary debug
         
