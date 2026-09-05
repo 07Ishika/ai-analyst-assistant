@@ -7,11 +7,11 @@ load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def ask_groq(prompt, system_message="You are a helpful data analyst assistant.", temperature=0.3):
-    # Try primary model first, fallback if not available
+    
     models_to_try = [
-        "llama-3.3-70b-versatile",
-        "llama3-70b-8192",
-        "mixtral-8x7b-32768"
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.6-27b",
+        "openai/gpt-oss-20b"
     ]
     
     for model in models_to_try:
@@ -27,7 +27,7 @@ def ask_groq(prompt, system_message="You are a helpful data analyst assistant.",
             )
             return response.choices[0].message.content
         except Exception as e:
-            if "not found" in str(e).lower() or "404" in str(e):
+            if "not found" in str(e).lower() or "404" in str(e).lower() or "decommissioned" in str(e).lower():
                 continue
             else:
                 return f"AI Error: {str(e)}"
