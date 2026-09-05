@@ -5,8 +5,74 @@ from utils.groq_helper import ask_groq
 from utils.data_helper import detect_sensitive_columns, get_safe_df
 
 def get_ai_suggestions(df):
+    # Get dataset type from session state
+    import streamlit as st
+    dataset_info = st.session_state.get("dataset_info", {})
+    dataset_type = dataset_info.get("dataset_type", "general")
+
+    type_specific_cleaning = {
+        "timeseries": """
+        - Check date column format consistency
+        - Check for missing time periods or gaps
+        - Check numeric columns for sudden spikes or impossible values
+        - Do NOT suggest removing date columns
+        """,
+        "hr": """
+        - Check salary columns for outliers (too high or too low)
+        - Check tenure/age columns for impossible values (negative, >100)
+        - Check categorical columns like department for inconsistent naming
+        - Flag any columns that might contain sensitive data
+        """,
+        "crm": """
+        - Check for duplicate customers based on email or ID
+        - Check location columns for inconsistent formatting
+        - Check categorical columns for inconsistent casing
+        - Do NOT suggest removing customer ID columns
+        """,
+        "transactional": """
+        - Check amount columns for negative values or zeros
+        - Check status columns for inconsistent values
+        - Check for duplicate transaction IDs
+        - Check date columns for future dates or impossible dates
+        """,
+        "marketing": """
+        - Check for zero values in spend or impression columns
+        - Check conversion rates for impossible values (>100%)
+        - Check date columns for campaign period consistency
+        - Check channel names for inconsistent formatting
+        """,
+        "performance": """
+        - Check score columns for values outside expected range
+        - Check attendance columns for impossible values
+        - Check for students/employees with duplicate records
+        - Check date columns for enrollment/assessment consistency
+        """,
+        "healthcare": """
+        - Check for missing values in critical columns like diagnosis
+        - Check age columns for impossible values
+        - Check date columns for admission/discharge consistency
+        - Flag sensitive patient data columns
+        """,
+        "general": """
+        - Check for null values and suggest appropriate handling
+        - Check for duplicate rows
+        - Check for inconsistent casing in text columns
+        - Check for whitespace issues
+        """
+    }
+
+    cleaning_focus = type_specific_cleaning.get(
+        dataset_type,
+        type_specific_cleaning["general"]
+    )
+
     prompt = f"""
 You are a senior data analyst guiding a junior analyst.
+This is a {dataset_type} dataset.
+
+For this type of dataset, focus cleaning on:
+{cleaning_focus}
+
 Analyze this dataset and return ONLY a JSON array. No other text.
 
 For each issue found, return this exact structure:
@@ -21,7 +87,7 @@ For each issue found, return this exact structure:
   }}
 ]
 
-Base everything on this actual dataset — be specific to these columns and this data:
+Base everything on this actual dataset:
 Columns: {df.columns.tolist()}
 Data Types: {df.dtypes.astype(str).to_dict()}
 Sample Data: {df.head(5).to_string()}
@@ -29,19 +95,14 @@ Null Counts: {df.isnull().sum().to_dict()}
 Duplicate Count: {df.duplicated().sum()}
 
 Rules:
-- problem, risk, benefit must be specific to THIS dataset and THESE columns
-- Do not use generic statements
+- Only suggest issues specific to {dataset_type} datasets
+- problem, risk, benefit must reference actual column names
 - Maximum 3 suggestions
 - Return ONLY the JSON array
-- Wide range in numeric columns is NORMAL — do not suggest it as an issue
-- Only suggest fill_mean or fill_mode if null count for that column is greater than 0
-- Only suggest drop_nulls if null count for that column is greater than 0
-- Attendance values like 0,1,2,3 are valid scale values — not inconsistent
-- Do not suggest cleaning for columns that have no actual data quality issues
     """
     response = ask_groq(
         prompt,
-        system_message="You are a senior data analyst. You only respond with valid JSON arrays based on actual data provided. Never use generic examples.",
+        system_message=f"You are a senior data analyst specializing in {dataset_type} datasets. You only respond with valid JSON arrays.",
         temperature=0.0
     )
     return response
@@ -241,4 +302,6 @@ def show_clean(df):
     st.write("**Preview of Cleaned Data**")
     st.dataframe(st.session_state.cleaned_df.head(10))
     st.divider()
-    
+    if st.button("Proceed to Define Problem →", key="clean_proceed"):
+        st.session_state.current_step = 4
+        st.rerun()
