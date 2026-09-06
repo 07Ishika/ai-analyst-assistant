@@ -5,7 +5,6 @@ from utils.groq_helper import ask_groq
 from utils.data_helper import detect_sensitive_columns, get_safe_df
 
 def get_ai_suggestions(df):
-    # Get dataset type from session state
     import streamlit as st
     dataset_info = st.session_state.get("dataset_info", {})
     dataset_type = dataset_info.get("dataset_type", "general")
@@ -18,53 +17,43 @@ def get_ai_suggestions(df):
         - Do NOT suggest removing date columns
         """,
         "hr": """
-        - Check salary columns for outliers (too high or too low)
-        - Check tenure/age columns for impossible values (negative, >100)
+        - Check salary columns for outliers
+        - Check tenure/age columns for impossible values
         - Check categorical columns like department for inconsistent naming
-        - Flag any columns that might contain sensitive data
         """,
         "crm": """
-        - Check for duplicate customers based on email or ID
+        - Check for duplicate customers
         - Check location columns for inconsistent formatting
         - Check categorical columns for inconsistent casing
-        - Do NOT suggest removing customer ID columns
         """,
         "transactional": """
-        - Check amount columns for negative values or zeros
-        - Check status columns for inconsistent values
+        - Check amount columns for negative values
         - Check for duplicate transaction IDs
-        - Check date columns for future dates or impossible dates
+        - Check date columns for impossible dates
         """,
         "marketing": """
-        - Check for zero values in spend or impression columns
-        - Check conversion rates for impossible values (>100%)
-        - Check date columns for campaign period consistency
+        - Check for zero values in spend columns
+        - Check conversion rates for impossible values
         - Check channel names for inconsistent formatting
         """,
         "performance": """
         - Check score columns for values outside expected range
         - Check attendance columns for impossible values
-        - Check for students/employees with duplicate records
-        - Check date columns for enrollment/assessment consistency
+        - Check for duplicate records
         """,
         "healthcare": """
-        - Check for missing values in critical columns like diagnosis
+        - Check for missing values in critical columns
         - Check age columns for impossible values
-        - Check date columns for admission/discharge consistency
         - Flag sensitive patient data columns
         """,
         "general": """
-        - Check for null values and suggest appropriate handling
+        - Check for null values
         - Check for duplicate rows
         - Check for inconsistent casing in text columns
-        - Check for whitespace issues
         """
     }
 
-    cleaning_focus = type_specific_cleaning.get(
-        dataset_type,
-        type_specific_cleaning["general"]
-    )
+    cleaning_focus = type_specific_cleaning.get(dataset_type, type_specific_cleaning["general"])
 
     prompt = f"""
 You are a senior data analyst guiding a junior analyst.
@@ -130,30 +119,30 @@ def show_clean(df):
     st.header("Step 3 — Clean & Transform")
     st.write("AI will suggest cleaning actions — you approve or skip each one")
 
-# PII Detection — before anything else
+    # PII Detection
     sensitive_cols = detect_sensitive_columns(df)
-    
-    # Value level PII detection
-    from utils.data_helper import detect_pii_in_values
-    value_pii = detect_pii_in_values(df)
-    
-    # Combine both detections
+    value_pii = {}
+    try:
+        from utils.data_helper import detect_pii_in_values
+        value_pii = detect_pii_in_values(df)
+    except:
+        pass
+
     all_sensitive = list(set(sensitive_cols + list(value_pii.keys())))
 
     if all_sensitive:
         st.markdown(f"""
-        <div style='background-color: #fde8e8; padding: 15px; 
+        <div style='background-color: #fde8e8; padding: 15px;
         border-radius: 10px; border-left: 5px solid #F44336; margin: 10px 0'>
         <h4>🔒 Privacy Warning — Sensitive Data Detected</h4>
         <p><b>Columns flagged by name:</b> {', '.join(sensitive_cols) if sensitive_cols else 'None'}</p>
         <p><b>Columns flagged by value scan:</b> {', '.join(value_pii.keys()) if value_pii else 'None'}</p>
         """, unsafe_allow_html=True)
 
-        # Show what PII types were found in values
         if value_pii:
             for col, pii_types in value_pii.items():
                 st.markdown(f"""
-                <div style='background-color: #fff5f5; padding: 8px 15px; 
+                <div style='background-color: #fff5f5; padding: 8px 15px;
                 border-radius: 6px; margin: 5px 0'>
                 ⚠️ Column <b>{col}</b> contains — {', '.join(pii_types)}
                 </div>
@@ -166,8 +155,10 @@ def show_clean(df):
         """, unsafe_allow_html=True)
 
         safe_df, _ = get_safe_df(df)
-        # Also remove value-level PII from safe_df
-        safe_df = safe_df.drop(columns=[c for c in value_pii.keys() if c in safe_df.columns], errors='ignore')
+        safe_df = safe_df.drop(
+            columns=[c for c in value_pii.keys() if c in safe_df.columns],
+            errors='ignore'
+        )
         st.info(f"✅ AI will only analyze {safe_df.shape[1]} safe columns out of {df.shape[1]} total columns.")
     else:
         safe_df = df.copy()
@@ -176,10 +167,8 @@ def show_clean(df):
     # Initialize session state
     if "cleaned_df" not in st.session_state:
         st.session_state.cleaned_df = df.copy()
-
     if "suggestions" not in st.session_state:
         st.session_state.suggestions = []
-
     if "applied_actions" not in st.session_state:
         st.session_state.applied_actions = []
 
@@ -195,57 +184,10 @@ def show_clean(df):
     with col3:
         st.metric("Total Rows", st.session_state.cleaned_df.shape[0])
 
-    # Section 2 — AI Suggestions with Approve/Skip
+    # Section 2 — AI Suggestions
     st.subheader("2️⃣ AI Suggestions — Approve or Skip Each")
 
     if st.button("🤖 Get AI Cleaning Suggestions", key="get_cleaning_suggestions"):
-        with st.spinner("AI is analyzing your data..."):
-            # Pass safe_df to AI — no sensitive columns
-            raw_response = get_ai_suggestions(safe_df)
-            try:
-                clean_response = raw_response.strip()
-                if "```json" in clean_response:
-                    clean_response = clean_response.split("```json")[1].split("```")[0]
-                elif "```" in clean_response:
-                    clean_response = clean_response.split("```")[1].split("```")[0]
-                start = clean_response.find("[")
-                end = clean_response.rfind("]") + 1
-                if start != -1 and end != 0:
-                    clean_response = clean_response[start:end]
-                suggestions = json.loads(clean_response)
-                # Filter invalid actions
-                suggestions = [s for s in suggestions if s['action'] != 'none']
-                # Filter irrelevant suggestions
-                null_counts = st.session_state.cleaned_df.isnull().sum().to_dict()
-                duplicate_count = st.session_state.cleaned_df.duplicated().sum()
-
-                def is_valid_suggestion(s):
-                        col = s['column']
-                        action = s['action']
-
-                        # Skip if no nulls but action is null related
-                        if action in ['drop_nulls', 'fill_mean', 'fill_mode']:
-                            if col == 'all':
-                                return st.session_state.cleaned_df.isnull().sum().sum() > 0
-                            return null_counts.get(col, 0) > 0
-
-                        # Skip drop_duplicates if no duplicates
-                        if action == 'drop_duplicates':
-                            return duplicate_count > 0
-
-                        # Skip none actions
-                        if action == 'none':
-                            return False
-
-                        # Skip lowercase/strip for numeric columns
-                        if action in ['lowercase', 'strip_whitespace']:
-                            if col in st.session_state.cleaned_df.columns:
-                                if st.session_state.cleaned_df[col].dtype in ['int64', 'float64']:
-                                    return False
-
-                        return True
-
-                  if st.button("🤖 Get AI Cleaning Suggestions", key="get_cleaning_suggestions"):
         with st.spinner("AI is analyzing your data..."):
             raw_response = get_ai_suggestions(safe_df)
             try:
@@ -263,15 +205,14 @@ def show_clean(df):
                 # Remove invalid actions
                 suggestions = [s for s in suggestions if s['action'] != 'none']
 
-                # Remove suggestions for PII columns
-                from utils.data_helper import detect_sensitive_columns
-                sensitive_cols = detect_sensitive_columns(df)
+                # Remove PII columns from suggestions
+                sensitive_cols_list = detect_sensitive_columns(df)
                 suggestions = [s for s in suggestions
-                               if s['column'] not in sensitive_cols]
+                               if s['column'] not in sensitive_cols_list]
 
                 # Filter irrelevant suggestions
                 null_counts = st.session_state.cleaned_df.isnull().sum().to_dict()
-                duplicate_count = st.session_state.cleaned_df.duplicated().sum()
+                dup_count = st.session_state.cleaned_df.duplicated().sum()
 
                 def is_valid_suggestion(s):
                     col = s['column']
@@ -281,7 +222,7 @@ def show_clean(df):
                             return st.session_state.cleaned_df.isnull().sum().sum() > 0
                         return null_counts.get(col, 0) > 0
                     if action == 'drop_duplicates':
-                        return duplicate_count > 0
+                        return dup_count > 0
                     if action == 'none':
                         return False
                     if action in ['lowercase', 'strip_whitespace']:
@@ -296,7 +237,7 @@ def show_clean(df):
             except Exception as e:
                 st.error(f"Could not parse AI response. Error: {e}")
 
-    # Show suggestion cards with Approve/Skip
+    # Show suggestion cards
     if st.session_state.suggestions:
         for i, suggestion in enumerate(st.session_state.suggestions):
             action_key = f"{suggestion['action']}_{suggestion['column']}"
@@ -307,7 +248,7 @@ def show_clean(df):
 
             with st.container():
                 st.markdown(f"""
-                <div style='background-color: #f0f2f6; padding: 15px; 
+                <div style='background-color: #f0f2f6; padding: 15px;
                 border-radius: 10px; margin: 10px 0px'>
                 <h4>💡 {suggestion['issue']}</h4>
                 <p><b>📌 Column:</b> {suggestion['column']}</p>
