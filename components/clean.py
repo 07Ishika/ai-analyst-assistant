@@ -245,12 +245,56 @@ def show_clean(df):
 
                         return True
 
+                  if st.button("🤖 Get AI Cleaning Suggestions", key="get_cleaning_suggestions"):
+        with st.spinner("AI is analyzing your data..."):
+            raw_response = get_ai_suggestions(safe_df)
+            try:
+                clean_response = raw_response.strip()
+                if "```json" in clean_response:
+                    clean_response = clean_response.split("```json")[1].split("```")[0]
+                elif "```" in clean_response:
+                    clean_response = clean_response.split("```")[1].split("```")[0]
+                start = clean_response.find("[")
+                end = clean_response.rfind("]") + 1
+                if start != -1 and end != 0:
+                    clean_response = clean_response[start:end]
+                suggestions = json.loads(clean_response)
+
+                # Remove invalid actions
+                suggestions = [s for s in suggestions if s['action'] != 'none']
+
+                # Remove suggestions for PII columns
+                from utils.data_helper import detect_sensitive_columns
+                sensitive_cols = detect_sensitive_columns(df)
+                suggestions = [s for s in suggestions
+                               if s['column'] not in sensitive_cols]
+
+                # Filter irrelevant suggestions
+                null_counts = st.session_state.cleaned_df.isnull().sum().to_dict()
+                duplicate_count = st.session_state.cleaned_df.duplicated().sum()
+
+                def is_valid_suggestion(s):
+                    col = s['column']
+                    action = s['action']
+                    if action in ['drop_nulls', 'fill_mean', 'fill_mode']:
+                        if col == 'all':
+                            return st.session_state.cleaned_df.isnull().sum().sum() > 0
+                        return null_counts.get(col, 0) > 0
+                    if action == 'drop_duplicates':
+                        return duplicate_count > 0
+                    if action == 'none':
+                        return False
+                    if action in ['lowercase', 'strip_whitespace']:
+                        if col in st.session_state.cleaned_df.columns:
+                            if st.session_state.cleaned_df[col].dtype in ['int64', 'float64']:
+                                return False
+                    return True
+
                 suggestions = [s for s in suggestions if is_valid_suggestion(s)]
                 st.session_state.suggestions = suggestions
                 st.success(f"✅ Found {len(suggestions)} suggestions!")
             except Exception as e:
                 st.error(f"Could not parse AI response. Error: {e}")
-                st.write("Raw response:", raw_response)
 
     # Show suggestion cards with Approve/Skip
     if st.session_state.suggestions:
@@ -301,6 +345,7 @@ def show_clean(df):
 
     st.write("**Preview of Cleaned Data**")
     st.dataframe(st.session_state.cleaned_df.head(10))
+
     st.divider()
     if st.button("Proceed to Define Problem →", key="clean_proceed"):
         st.session_state.current_step = 4
